@@ -1,69 +1,148 @@
-const { systemPreferences } = require("electron")
-const { dbConfig } = require("./baseDB copy")
+const { systemPreferences, MenuItem } = require("electron")
 
+this.objectStore = null
+this.request = null
+this.dbIndex = null
 
-const DB_CONFIG ={
-    dbName:'shares',
-    dbVersion:3
+const DB_CONFIG = {
+    dbName: 'shares',
+    dbVersion: 1
 }
 
-const createDB = new Promise(function(resolve,reject){
-    console.log('create database')
-    let openObejctRequst = window.indexedDB.open(DB_CONFIG.dbName, DB_CONFIG.dbVersion)
-    openObejctRequst.onsuccess = function(event){
-        console.log('created database')
-        db = openObejctRequst.result
-    }
-    openObejctRequst.onerror = function(event){
-        console.error('数据库连接失败')
-        reject(event)
-    }
-    openObejctRequst.onupgradeneeded = function(evet){
-        console.log('数据库发生更新')
-        resolve(openObejctRequst.result)
-    }
-})
-function init(){
-    console.log('init database')
-    createDB.then(result=>{
-        db = result
-        console.log('数据库连接成功')
-        createStore()
-    }).catch()
+
+const createDB = function () {
+
+    new Promise(function (resolve, reject) {
+        let openObejctRequst = window.indexedDB.open(DB_CONFIG.dbName, DB_CONFIG.dbVersion)
+        openObejctRequst.onsuccess = function (event) {
+            console.log('connet successful!!!')
+            db = openObejctRequst.result
+        }
+        openObejctRequst.onerror = function (event) {
+            console.error('数据库连接失败')
+            reject(event)
+        }
+        openObejctRequst.onupgradeneeded = function (evet) {
+            console.log('数据库发生更新')
+            db = openObejctRequst.result
+            createStore('dataset', ['file_name', 'code', 'tag', 'date'])
+            createStore('tagset', ['tag'])
+        }
+    })
 }
-function DB(){
-    if(!db) {throw new Error('DB未初始化,操作中断！！！')}
+
+function init () {
+    console.log('connet to database')
+    createDB()
+}
+function DB () {
+    if (!db) throw new Error('DB未初始化,操作中断！！！')
     return db
 }
 
-function createStore(){
+function createStore (storeName, indexKVs) {
     console.log('create store')
-    let objectStore = DB().createObjectStore('dataset',{keyPath:'id'})
-    objectStore.createIndex('file_name','file_name',{unique:false})
-    objectStore.createIndex('ident_code','ident_code',{unique:false})
-    console.log(objectStore)
+    this.objectStore = DB().createObjectStore(storeName, { keyPath: 'id' })
+    indexKVs.forEach(e => {
+        console.log(e)
+        objectStore.createIndex(e, e, { unique: false })
+    })
 }
+
 var db = db || init()
 
-exports.insert =  function (storeName,object){
-    let objectStore= DB().transaction([storeName], "readwrite").objectStore(storeName)
-    let request = objectStore.count()
-    request.onsuccess = function(){
-        let index  = request.result
-        console.log(index)
-        object.forEach(e=>{
-            e.id=++index
-           objectStore.add(e)
-        })
-    }
-    
+exports.insert = function (object) {
+    console.log('inserting....')
+    return new Promise((resolve, reject) => {
+        let request = this.objectStore.count()
+        let objectStoreT = this.objectStore
+        request.onsuccess = function (event) {
+            let index = request.result
+            object.forEach(element => {
+                element.id = ++index
+                objectStoreT.add(element)
+            });
+            console.log('insert successful!!!')
+            resolve(event)
+        }
+        request.onerror = function (event) {
+            reject(event)
+        }
+    })
 }
 
-exports.getAll = function (storeName,callback){
-    let objectStore= DB().transaction([storeName], "readwrite").objectStore(storeName)
-    let request =  objectStore.getAll()
-    request.onsuccess = function(){
-        callback(request.result)
-    }
+exports.store = function (storeName) {
+    console.log('current store:', storeName)
+    this.objectStore = DB().transaction([storeName], "readwrite").objectStore(storeName)
+    return this
 }
 
+exports.index = function (indexName) {
+    this.dbIndex = this.objectStore.index(indexName)
+    return this
+}
+
+exports.getAllByIndexName = function (indexValue) {
+    return new Promise((resolve, reject) => {
+        let request = this.dbIndex.getAll(indexValue, 0)
+        console.log(request)
+        request.onsuccess = function (event) {
+            resolve(event.target.result)
+        }
+        request.onerror = function (event) {
+            reject(event)
+        }
+    })
+}
+
+
+exports.getAll = function () {
+    return new Promise((resolve, reject) => {
+        let request = this.objectStore.getAll()
+        request.onsuccess = function (event) {
+            resolve(event.target.result)
+        }
+        request.onerror = function (event) {
+            reject(event)
+        }
+    })
+}
+
+exports.getById = function (id) {
+    return new Promise((resolve, reject) => {
+        let request = this.objectStore.get(id)
+        request.onsuccess = function (event) {
+            resolve(event.target.result)
+        }
+        request.onerror = function (event) {
+            reject(event)
+        }
+    })
+}
+
+exports.update = function (obj) {
+    return new Promise((resolve, reject) => {
+        let request = this.objectStore.put(obj)
+        request.onsuccess = function (event) {
+            resolve(event.target.result)
+        }
+        request.onerror = function (event) {
+            reject(event)
+        }
+    })
+}
+
+exports.delete = function (ids) {
+    return new Promise((resolve, reject) => {
+        for (let index in ids) {
+            let request = this.objectStore.delete(ids[index])
+            request.onsuccess = function (event) {
+                resolve(event)
+            }
+            request.onerror = function (event) {
+                reject(event)
+            }
+        }
+
+    })
+}

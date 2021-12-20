@@ -1,6 +1,6 @@
 const baseDB = require('./baseDB')
 const EXCEL_STORE_CONFIG = {
-    storeName: 'dataset'
+    storeName: 'tagset'
 }
 
 // 查询数据
@@ -16,24 +16,6 @@ exports.getAll = function () {
 exports.getById = function (id) {
     return new Promise((resolve, reject) => {
         baseDB.store(EXCEL_STORE_CONFIG.storeName).getById(id).then(e => {
-            resolve(e)
-        }).catch(e => {
-            reject(e)
-        })
-    })
-}
-exports.getAllByFileName = function (key) {
-    return new Promise((resolve, reject) => {
-        baseDB.store(EXCEL_STORE_CONFIG.storeName).index('file_name').getAllByIndexName(key).then(e => {
-            resolve(e)
-        }).catch(e => {
-            reject(e)
-        })
-    })
-}
-exports.getAllByCode = function (key) {
-    return new Promise((resolve, reject) => {
-        baseDB.store(EXCEL_STORE_CONFIG.storeName).index('code').getAllByIndexName(key).then(e => {
             resolve(e)
         }).catch(e => {
             reject(e)
