@@ -1,9 +1,11 @@
 const { ipcRenderer } = require('electron')
 const excelDB = require('./db/excelDB')
-const tagDB = require('./db/tagDB')
-const baseDB = require('./db/baseDB')
 const fs = require('fs')
 const xlsx = require('node-xlsx');
+const echarts = require('echarts');
+
+
+
 
 const importBtn = document.getElementById('importBtn')
 importBtn.addEventListener('click', (event) => {
@@ -47,9 +49,9 @@ ipcRenderer.on('reply', (event, arg) => {
   console.log('arg', arg)
   arg.forEach(filePath => {
     // Mac os
-    // const fileName = filePath.split('/').pop()
+    const fileName = filePath.split('/').pop()
     // Win os
-    const fileName = filePath.split('\\').pop()
+    // const fileName = filePath.split('\\').pop()
     console.log(`filePath：${filePath}`,)
     console.log(`fileName: ${fileName}`,)
     var dataTime = handleFileName(fileName)
@@ -71,20 +73,19 @@ ipcRenderer.on('reply', (event, arg) => {
         excelObjArr.push(excelObj)
       })
       excelObjArr.splice(0, 1)
-      tagInsert(excelObjArr)
       //存入数据库
       excelDB.insert(excelObjArr)
     })
   })
 })
-function handle (str) {
+function handle(str) {
   if (str != '--') {
     return getExecStrs(str, /[0-9]*\.[0-9]*/g)
   }
   return 0
 }
 
-function getExecStrs (str, reg) {
+function getExecStrs(str, reg) {
   var result = reg.exec(str)
   if (!result) {
     return str
@@ -92,13 +93,13 @@ function getExecStrs (str, reg) {
   return result[0]
 }
 // 解析表格名称
-function handleFileName (fileName) {
+function handleFileName(fileName) {
   var result = getExecStrs(fileName, /[0-9]*\.[0-9]*/g)
   console.log(`filename 年：${result.slice(0, 1)} 月：${result.slice(1, 3)} 日：${getExecStrs(fileName, /\.[0-9]*/g).split('.')[1]}`,)
   return `${'202' + result.slice(0, 1)}/${result.slice(1, 3)}/${getExecStrs(fileName, /\.[0-9]*/g).split('.')[1]}`
 }
 // 解析识别码
-function handleTag (str) {
+function handleTag(str) {
   let regs = [
     { reg: /^(60)[0-9]{4}/g, tag: '沪A' },
     { reg: /^(688)[0-9]{3}/g, tag: '科创' },
@@ -121,7 +122,10 @@ function handleTag (str) {
 
 // 策略
 // 识别码为0或为空，需要容错（忽略）
-
+function test() {
+  getByCode('000039')
+  group()
+}
 // 需求1:
 //  搜索识别码 （3个月、6个月、12个月、全部）
 //  展示R、Y、价格、时间的关系
@@ -129,14 +133,48 @@ function handleTag (str) {
 //  右侧竖坐标为价格
 //  横坐标为time
 //  可以选择R、Y选择展示还是一起展示
-
-function getByCode(code){
-  return excelDB.getAllByCode(code).then(e=>{
-    e.forEach(el => {
-      console.log(el.date,`R:${el.R},Y:${el.Y}`)
-    })
-    return e
-  })
+async function getByCode(code) {
+  let a = (await excelDB.getAllByCode()).value
+  console.log('result', a)
+  let b = groupHandle(a,'date')
+  let datelist = []
+  let valuelistR = []
+  let valuelistY = []
+  console.log('b', b)
+  for(let key in b){
+    datelist.push(key)
+    valuelistR.push(computCount(jsonToArr(b[key],'R')))
+    valuelistY.push(computCount(jsonToArr(b[key],'Y')))
+  }
+  console.log('valuelistR', valuelistR)
+  console.log('valuelistY', valuelistY)
+  var myChart = echarts.init(document.getElementById('xq1'));
+  var option = {
+    xAxis: {
+      type: 'category',
+      data: datelist
+    },
+    yAxis: {
+      type: 'value'
+    },
+    legend: {
+      data: ['R', 'Y'],
+      left: 10
+    },
+    series: [
+      {
+        name: 'R',
+        data: valuelistR,
+        type: 'line'
+      },
+      {
+        name: 'Y',
+        data: valuelistY,
+        type: 'line'
+      }
+    ]
+  };
+  myChart.setOption(option);
 }
 
 
@@ -150,38 +188,60 @@ function getByCode(code){
 // 计算以上每日R、Y平均值
 // tag RY 合计
 // 归类RY 按识别码.日期
-function rycalss () {
-  return excelDB.getAll().then(e => {
-    var R = {}
-    var Y = {}
-    e.forEach(el => {
-      R[el.tag] = R[el.tag] || {}
-      R[el.tag][el.date] = R[el.tag][el.date] || []
-      R[el.tag][el.date].push(el.R)
-      Y[el.tag] = Y[el.tag] || {}
-      Y[el.tag][el.date] = Y[el.tag][el.date] || []
-      Y[el.tag][el.date].push(el.Y)
-    })
-    // computerAvg(Y)
-    // computerAvg(R)
-    return { 'R': R, 'Y': Y }
-  })
-}
-
-
-// 计算平均值
-function computerAvg (avgArr) {
-  for (let a in avgArr) {
-    for (let b in avgArr[a]) {
-      var sum = 0
-      avgArr[a][b].forEach(e => {
-        sum += parseFloat(e)
-      })
-      avgArr[a][b] = sum / avgArr[a][b].length
+async function group() {
+  let a = (await excelDB.getAll()).group('tag').diyHandle(e => {
+    for (let k in e) {
+      e[k] = groupHandle(e[k], 'date')
+      for (let i in e[k]) {
+        e[k][i] = computAvg(jsonToArr(e[k][i], 'R'))
+      }
     }
-  }
-  return avgArr
+    return e
+  }).value
+  console.log('xq2', a)
+  var datelist = []
+  var taglist = []
+  var vallistR=[]
+  var vallistY=[]
+
+  // var myChart = echarts.init(document.getElementById('xq2'));
+  // var option = {
+  //   xAxis: {
+  //     type: 'category',
+  //     data: datelist
+  //   },
+  //   yAxis: {
+  //     type: 'value'
+  //   },
+  //   legend: {
+  //     data: ['R', 'Y'],
+  //     left: 10
+  //   },
+  //   series: [
+  //     {
+  //       name: 'R',
+  //       data: valuelistR,
+  //       type: 'line'
+  //     },
+  //     {
+  //       name: 'Y',
+  //       data: valuelistY,
+  //       type: 'line'
+  //     }
+  //   ]
+  // };
+  // myChart.setOption(option);
 }
+
+function groupHandle(obj, key) {
+  let tempResult = []
+  obj.forEach(el => {
+    tempResult[el[key]] = tempResult[el[key]] || []
+    tempResult[el[key]].push(el)
+  });
+  return tempResult
+}
+
 
 // 筛选标签
 
@@ -205,35 +265,29 @@ function computerAvg (avgArr) {
 // 3001 ~ 4000
 // 4001 ~ 5000
 // 5000+
-function test(){
-  xq3()
-}
-function xq3 () {
-  excelDB.getAll().then(e => {
+// xq3
+async function xq3() {
+  let a = (await excelDB.getAllNew()).diyHandle(e => {
     var SR = {
-      '<100':{},
-      '<300':{},
-      '<500':{},
-      '<1000':{},
-      '<1500':{},
-      '<2000':{},
-      '<3000':{},
-      '<4000':{},
-      '<5000':{},
-      '5000+':{}
+      '<100': {},
+      '<300': {},
+      '<500': {},
+      '<1000': {},
+      '<1500': {},
+      '<2000': {},
+      '<3000': {},
+      '<4000': {},
+      '<5000': {},
+      '5000+': {}
     }
     e.forEach(el => {
-      let S = el['总市值']
+      let S = parseFloat(el['总市值']) || 0
       let date = el.date
       if (S < 100) {
         SR['<100'][date] = SR['<100'][date] || []
-
         SR['<100'][date].push(S)
       } else if (S < 300) {
         SR['<300'][date] = SR['<300'][date] || []
-        if(isNaN(S)){
-          console.log('Nan',S)
-        } 
         SR['<300'][date].push(S)
       } else if (S < 500) {
         SR['<500'][date] = SR['<500'][date] || []
@@ -256,15 +310,19 @@ function xq3 () {
       } else if (S < 5000) {
         SR['<5000'][date] = SR['<5000'][date] || []
         SR['<5000'][date].push(S)
-      }else{
+      } else {
         SR['5000+'][date] = SR['5000+'][date] || []
         SR['5000+'][date].push(S)
       }
     })
-    console.log('SR1',SR)
-    console.log(computerAvg(SR))
-    console.log('SR2',SR)
-  })
+    for (let key in SR) {
+      for (let k in SR[key]) {
+        SR[key][k] = computAvg(SR[key][k])
+      }
+    }
+    return SR
+  }).value
+  console.log('result', a)
 }
 
 // 筛选区间
@@ -285,11 +343,47 @@ function xq3 () {
 // 需求5
 // 根据R、Y选择数值区间，筛选识别码并展示
 // R、Y可单独选
-async function xq4(){
-  let a = await getByCode('000060')
-  let bettwn = {min:10,max:500}
-  let target = 'R'
-  a.forEach(e=>{
-    if(e.R > bettwn.min && e.R <  bettwn.max)console.log(e)
+async function xq4() {
+  let bettwn = { Y: { min: 10, max: 14 } }
+  let a = (await excelDB.getAll()).bettwn(bettwn).value
+  console.log('result', a)
+}
+
+
+
+// 
+async function getDataById(id) {
+  let a = (await excelDB.getAll()).where({ id: id }).value
+  console.log('a', a)
+}
+
+
+// group
+
+
+
+//
+
+// 计算平均值
+function computAvg(arr) {
+  let sum = 0
+  arr.forEach(e => {
+    sum += parseFloat(e)
   })
+  return sum / arr.length
+}
+function computCount(arr) {
+  let sum = 0
+  arr.forEach(e => {
+    sum += parseFloat(e)
+  })
+  return sum
+}
+function jsonToArr(obj, key) {
+  let tempArr = []
+  obj.forEach(e => {
+    let val = e[key] || 0
+    tempArr.push(val)
+  })
+  return tempArr
 }

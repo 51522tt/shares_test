@@ -20,6 +20,7 @@ const createDB = function () {
         }
         openObejctRequst.onerror = function (event) {
             console.error('数据库连接失败')
+            console.log(event)
             reject(event)
         }
         openObejctRequst.onupgradeneeded = function (evet) {
@@ -108,6 +109,8 @@ exports.getAll = function () {
     })
 }
 
+
+
 exports.getById = function (id) {
     return new Promise((resolve, reject) => {
         let request = this.objectStore.get(id)
@@ -144,5 +147,18 @@ exports.delete = function (ids) {
             }
         }
 
+    })
+}
+
+
+exports.getAllNew = function () {
+    return new Promise((resolve, reject) => {
+        let request = this.objectStore.getAll()
+        request.onsuccess = function (event) {
+            resolve(event.target.result)
+        }
+        request.onerror = function (event) {
+            reject(event)
+        }
     })
 }
