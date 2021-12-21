@@ -4,9 +4,6 @@ const fs = require('fs')
 const xlsx = require('node-xlsx');
 const echarts = require('echarts');
 
-
-
-
 const importBtn = document.getElementById('importBtn')
 importBtn.addEventListener('click', (event) => {
   // 异步消息
@@ -55,6 +52,7 @@ ipcRenderer.on('reply', (event, arg) => {
     console.log(`filePath：${filePath}`,)
     console.log(`fileName: ${fileName}`,)
     var dataTime = handleFileName(fileName)
+    console.log(fs.readFileSync(filePath))
     const sheets = xlsx.parse(fs.readFileSync(filePath));
     // 遍历 sheet
     sheets.forEach(sheet => {
@@ -386,4 +384,12 @@ function jsonToArr(obj, key) {
     tempArr.push(val)
   })
   return tempArr
+}
+function groupHandle(obj, key) {
+  let tempResult = []
+  obj.forEach(el => {
+    tempResult[el[key]] = tempResult[el[key]] || []
+    tempResult[el[key]].push(el)
+  });
+  return tempResult
 }
